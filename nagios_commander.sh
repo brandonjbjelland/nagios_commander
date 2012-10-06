@@ -21,7 +21,6 @@
 ####
 
 # globals can be defined here if desired
-NAG_HOST='nagios.sea.bigfishgames.com/nagios'
 
 unalias -a
 
