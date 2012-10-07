@@ -4,8 +4,10 @@
 # Created:  08.19.12
 # Purpose:  Provide a CLI interface to query and access common nagios functions remotely
 # TODO:     query host health, service health, force rechecks
+# TODO:     password input from a plain text file
+# TODO:     service group or host group health
 
-#Copyright 2012 Brandon J. O'Connor
+# Copyright 2012 Brandon J. O'Connor
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -18,9 +20,12 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
-####
+##################
 
 # globals can be defined here if desired
+#NAG_HOST='nagios.sea.bigfishgames.com/nagios'
+#USERNAME=''
+#PASSWORD=''
 
 unalias -a
 
@@ -85,7 +90,7 @@ $DIR/$PROGNAME -n $NAG_HOST -c set downtime -h cfengine01.sea -s PROC_CFAGENT_QU
 $DIR/$PROGNAME -n $NAG_HOST -q list -h -u <USERNAME> -p <PASSWORD>
 $DIR/$PROGNAME -n $NAG_HOST -q host_downtime -u <USERNAME> -p <PASSWORD>
 "
-exit
+exit 1
 }
 
 while [ "$1" != "" ]; do
@@ -104,7 +109,7 @@ while [ "$1" != "" ]; do
             -d | --down_id ) shift; DOWN_ID=$1;;
             -Q | --quiet ) QUIET=1;;
             -D | --debug ) DEBUG=1;;
-            * ) echo "Invalid parameters."; usage;;
+            *  | --help ) usage;;
         esac
         shift
 done
@@ -115,29 +120,23 @@ fi
 if [ -z $USERNAME ]; then read -p "Username: " USERNAME; fi
 if [ -z $PASSWORD ]; then read -s -p "Password for $USERNAME: " PASSWORD; echo ""; fi
 
-NAGIOS_INSTANCE="http://$NAG_HOST/cgi-bin"
-
-if  [ $NAG_HOST ] &&\
-    [ $USERNAME ] &&\
-    [ $PASSWORD ] ; then
-    if  [  ! $ACTION  ] &&\
-        [  ! $QUERY ]; then
-            echo "A query or command must be specified."; usage
-    elif [ $ACTION ] &&\
-         [ $QUERY ]; then
-            echo "Cant have both a query and command."; usage
+if  [ $NAG_HOST ] && [ $USERNAME ] && [ $PASSWORD ] ; then
+    if  [ ! $ACTION  ] && [ ! $QUERY ]; then
+            echo "A query or command must be specified."; sleep 1; usage
+    elif [ $ACTION ] && [ $QUERY ]; then
+            echo "Cannot execute both a query and command."; sleep 1; usage
     fi
 else
-    echo "Script initiated with insufficient inputs. Exiting."; exit
+    echo "Script initiated with insufficient inputs. Exiting."; sleep 1; usage
 fi
 
-# verify creds are good
+# verify creds are good on the fastest page possible
+NAGIOS_INSTANCE="http://$NAG_HOST/cgi-bin"
 if [ -n "`curl -Ss $NAGIOS_INSTANCE/ -u $USERNAME:$PASSWORD | grep 'Authorization'`" ]; then
     echo "Bad credentials. Exiting"; exit 1
 fi
 
 function MAIN {
-
 if  [ $QUERY ]; then
     if [[ $QUERY = list ]]; then
         if [[ $HOST = list  ]]; then
@@ -185,7 +184,7 @@ if  [ $QUERY ]; then
     fi
 
 elif [ $ACTION ]; then
-    if [ ! $HOST ] && [ ! $HOSTGROUP ] && [ ! $SERVICEGROUP ] && [[ $ACTION = set ]]; then # global commands
+    if [ ! $HOST ] && [ ! $HOSTGROUP ] && [ ! $SERVICEGROUP ] && [[ $ACTION = set ]]; then
         if [[ $SCOPE = notifications ]]; then
             if [[ $VALUE =~ en ]]; then CMD_TYP='12'; VALUE='enabled'; GLOBAL_COMMAND;
             elif [[ $VALUE =~ dis ]]; then CMD_TYP='11'; VALUE='disabled'; GLOBAL_COMMAND;
@@ -242,6 +241,7 @@ elif [ $ACTION ]; then
                 CMD_TYP='122'; DATA="--data servicegroup=$SERVICEGROUP"
             else
                 echo "$SCOPE needs to be applied to a service, host, hostgroup or servicegroup. Exiting."
+                exit 1
             fi
             SET_DOWNTIME
         elif [[ $ACTION = ack ]] && [ $HOST ] && [ $SERVICE ] ; then
@@ -251,22 +251,25 @@ elif [ $ACTION ]; then
         fi
     elif [[ $ACTION = del ]]; then
         if [ $DOWN_ID ]; then
-            CMD_TYP=79 ; DELETE_DOWNTIME
-            CMD_TYP=78 ; DELETE_DOWNTIME
-            exit
+            CMD_TYP=79 ; DELETE_DOWNTIME; CMD_TYP=78 ; DELETE_DOWNTIME
+            exit 0
         elif [ $SERVICE ] && [ $HOST ]; then
             COUNT=1; SCOPE=services
             while [ ! $DOWN_ID ] && [ $COUNT -lt 5 ] ; do
                 FIND_DOWN_ID; COUNT=$[$COUNT+1]
             done
-            if [ ! $DOWN_ID ]; then echo "Could not find downtime for $HOST. Exiting."; exit; fi
-            DELETE_DOWNTIME; exit
+            if [ ! $DOWN_ID ]; then echo "Could not find downtime for $HOST. Exiting."
+                exit 1
+            fi
+            DELETE_DOWNTIME; exit 0
         elif [ $HOST ]; then
             COUNT=1; SCOPE=hosts
             while [ ! $DOWN_ID ] && [ $COUNT -lt 5 ] ; do
                 FIND_DOWN_ID; COUNT=$[$COUNT+1]
             done
-            if [ ! $DOWN_ID ]; then echo "Could not find downtime for $HOST. Exiting."; exit; fi
+            if [ ! $DOWN_ID ]; then echo "Could not find downtime for $HOST. Exiting."
+                exit 1
+            fi
             DELETE_DOWNTIME; exit
         else
             echo "No host, service or downtime-id specified. Listing current downtimes now."
@@ -288,24 +291,29 @@ if [ ! $MINUTES ]; then
     exit
 fi
 NOW=$(date +"%m-%d-%Y %H:%M:%S")
-curl -sS $DATA \
-    --data cmd_typ=$CMD_TYP --data cmd_mod=2 --data "com_data=$COMMENT" \
-    --data "start_time=$NOW" --data "end_time=$NOW_ADD_MINS" \
-    --data fixed=1 --data hours=2 --data minutes=0 --data btnSubmit=Commit \
-    $NAGIOS_INSTANCE/cmd.cgi -u "$USERNAME:$PASSWORD" --output /dev/null
-if [ $? -eq 1 ]; then echo "curl failed. Command not sent."; exit; fi
+curl -sS $DATA $NAGIOS_INSTANCE/cmd.cgi -u "$USERNAME:$PASSWORD" \
+    --data cmd_typ=$CMD_TYP \
+    --data cmd_mod=2 \
+    --data "com_data=$COMMENT" \
+    --data "start_time=$NOW" \
+    --data "end_time=$NOW_ADD_MINS" \
+    --data fixed=1 \
+    --data hours=2 \
+    --data minutes=0 \
+    --data btnSubmit=Commit \
+    --output /dev/null
+if [ $? -eq 1 ]; then echo "curl failed. Command not sent."; exit 1; fi
 if [ -z $QUIET ]; then
     if [ $SERVICE ]; then SCOPE=services; elif [ $HOST ]; then SCOPE=hosts; fi
     if [ $HOST ] || [ $SERVICE ]; then
-        COUNT=2
-        FIND_DOWN_ID
-        OLD_DID=$DOWN_ID; if [ $OLD_DID ]; then sleep 1; else OLD_DID=1 && DOWN_ID=1; fi
+        COUNT=2; FIND_DOWN_ID; OLD_DID=$DOWN_ID;
+        if [ $OLD_DID ]; then sleep 1; else OLD_DID=1 && DOWN_ID=1; fi
         while [ $DOWN_ID -eq $OLD_DID  ] && [ $COUNT -le 15 ] ; do
-            sleep 1
-            FIND_DOWN_ID
-            COUNT=$[$COUNT+1]
+            sleep 1; FIND_DOWN_ID; COUNT=$[$COUNT+1]
         done
-        if [ $DOWN_ID -eq 1 ]; then echo "Could not find newly created downtime. Exiting."; exit; fi
+        if [ $DOWN_ID -eq 1 ]; then
+            echo "Could not find newly created downtime. Exiting."; exit 1
+        fi
     fi
     echo $DOWN_ID
 fi
@@ -314,27 +322,25 @@ exit
 
 function FIND_DOWN_ID {
 if [[ $SCOPE = hosts ]]; then
-    if [ ! $COUNT ]; then  echo -e "hostname\tdowntime-id"; fi
-    DOWN_ID=$(curl -Ss \
-    "$NAGIOS_INSTANCE/extinfo.cgi" \
-    --data "type=6" \
-    -u $USERNAME:$PASSWORD |\
-    egrep "downtime(Even|Odd)" | grep -v "service=" |\
-    awk -F'host=' '{print $2}' | awk -F"'>" '{print $1"\t"$10}' |\
-    awk -F'</' '{print $1}' | column -c2 | egrep "$HOST" | egrep -o "[0-9]+" | sort -rn | head -n1)
+    # XXX what is this?
+    # if [ ! $COUNT ]; then  echo -e "hostname\tdowntime-id"; fi
+    DOWN_ID=$(curl -Ss $NAGIOS_INSTANCE/extinfo.cgi -u $USERNAME:$PASSWORD \
+    --data type=6 | grep "extinfo.cgi" | sed -e'/service=/d' |\
+    awk -F"<td CLASS='downtime" '{print $2" "$4" "$7" "$10" "$5}' |\
+    awk -F'>' '{print $3"|||"$10"}' | sed -e's/<\/td//g' -e's/<\/A//g' |\
+    egrep "$HOST" | egrep -o "[0-9]+" | sort -rn | head -n1)
     if [ ! $DOWN_ID ]; then DOWN_ID=1; fi
 elif [[ $SCOPE = services ]]; then
-     if [ ! $COUNT ]; then echo -e "hostname\t\tservice\t\tdowntime-id"; fi
-    DOWN_ID=$(curl -Ss \
-    "$NAGIOS_INSTANCE/extinfo.cgi" \
-    --data "type=6" \
-    -u $USERNAME:$PASSWORD |\
-    egrep "downtime(Even|Odd)" | grep 'service=' | \
-    awk -F'host=' '{print $3}'| awk -F'</td>' '{print $1" "$9}' |\
-    sed "s/&service=/\'\>/g" | awk -F"'>" '{print $1"\t\t"$2"\t"$4}' |\
-    column -c3 | egrep "$HOST" | grep "$SERVICE" | egrep -o "[0-9]+" | sort -rn | head -n1)
+    # XXX what is this?
+    #if [ ! $COUNT ]; then echo -e "hostname\t\tservice\t\tdowntime-id"; fi
+    DOWN_ID=$(curl -Ss $NAGIOS_INSTANCE/extinfo.cgi -u $USERNAME:$PASSWORD \
+    --data type=6 | grep "extinfo.cgi" | grep "service=" |\
+    awk -F"<td CLASS='downtime" '{print $2" "$3" "$5" "$7" "$8" "$6" "$11}' |\
+    awk -F'>' '{print $3"|||"$7"|||"$18"}' | sed -e's/<\/td//g' -e's/<\/A//g' |\
+    column -c8 -t -s"|||" | egrep "$HOST" | grep "$SERVICE" | egrep -o "[0-9]+" |\
+    sort -rn | head -n1)
 if [ ! $DOWN_ID ]; then DOWN_ID=1; fi
-if [ $? -eq 1 ]; then echo "curl failed"; exit; fi
+if [ $? -eq 1 ]; then echo "curl failed"; exit 1; fi
 fi
 }
 
@@ -343,55 +349,67 @@ if [[ $SCOPE = hosts ]]; then
     curl -Ss $NAGIOS_INSTANCE/extinfo.cgi --data type=6 -u $USERNAME:$PASSWORD |\
     grep "extinfo.cgi" | sed -e'/service=/d' |\
     awk -F"<td CLASS='downtime" '{print $2" "$4" "$7" "$10" "$5}' |\
-    awk -F'>' '{print $3"|||"$10"|||"$8"|||"$6"|||"$12}' | sed -e's/<\/td//g' -e's/<\/A//g' |\
+    awk -F'>' '{print $3"|||"$10"|||"$8"|||"$6"|||"$12}' |\
+    sed -e's/<\/td//g' -e's/<\/A//g' |\
     sed "1 i \Hostname|||Downtime-id|||End_date_and_time|||Author|||Comment" |\
     column -c7 -t -s"|||"
 elif [[ $SCOPE = services ]]; then
     curl -Ss $NAGIOS_INSTANCE/extinfo.cgi --data type=6 -u $USERNAME:$PASSWORD |\
-    grep "extinfo.cgi" | grep "service=" | awk -F"<td CLASS='downtime" '{print $2" "$3" "$5" "$7" "$8" "$6" "$11}' |\
-    awk -F'>' '{print $3"|||"$7"|||"$18"|||"$14"|||"$10"|||"$16}' |sed -e's/<\/td//g' -e's/<\/A//g' |\
+    grep "extinfo.cgi" | grep "service=" |\
+    awk -F"<td CLASS='downtime" '{print $2" "$3" "$5" "$7" "$8" "$6" "$11}' |\
+    awk -F'>' '{print $3"|||"$7"|||"$18"|||"$14"|||"$10"|||"$16}' |\
+    sed -e's/<\/td//g' -e's/<\/A//g' |\
     sed "1 i \Hostname|||Service|||Downtime-id|||End_date_and_time|||Author|||Comment" |\
     column -c8 -t -s"|||"
 fi
-if [ $? -eq 1 ]; then echo "curl failed"; exit; fi
+if [ $? -eq 1 ]; then echo "curl failed"; exit 1; fi
 }
 
 function DELETE_DOWNTIME {
-curl -Ss --output /dev/null $NAGIOS_INSTANCE/cmd.cgi --data cmd_mod=2 --data cmd_typ=$CMD_TYP \
-    --data down_id=$DOWN_ID --data btnSubmit=Commit -u $USERNAME:$PASSWORD
-if [ $? -eq 1 ]; then echo "curl failed"; exit; fi
+curl -Ss --output /dev/null $NAGIOS_INSTANCE/cmd.cgi \
+    --data cmd_mod=2 \
+    --data cmd_typ=$CMD_TYP \
+    --data down_id=$DOWN_ID \
+    --data btnSubmit=Commit \
+    -u $USERNAME:$PASSWORD
+if [ $? -eq 1 ]; then echo "curl failed"; exit 1; fi
 }
 
 function GLOBAL_COMMAND {
 curl -sS $DATA \
-    "$NAGIOS_INSTANCE/cmd.cgi" --data cmd_mod=2 --data cmd_typ=$CMD_TYP --data btnSubmit=Commit \
-    -u $USERNAME:$PASSWORD | grep -o 'Your command request was successfully submitted to Nagios for processing.'
-if [ $? -eq 1 ]; then echo "curl failed. Command not sent."; exit; fi
-QUERY=$SCOPE
-RESULT=`MAIN`
-until [[ $SCOPE:$VALUE = $RESULT ]]; do
-    sleep 1
-    RESULT=`MAIN`
-done
+    "$NAGIOS_INSTANCE/cmd.cgi" \
+    --data cmd_mod=2 \
+    --data cmd_typ=$CMD_TYP \
+    --data btnSubmit=Commit \
+    -u $USERNAME:$PASSWORD |\
+    grep -o 'Your command request was successfully submitted to Nagios for processing.'
+if [ $? -eq 1 ]; then echo "curl failed. Command not sent."; exit 1; fi
+QUERY=$SCOPE; RESULT=`MAIN`
+until [[ $SCOPE:$VALUE = $RESULT ]]; do sleep 1; RESULT=`MAIN`; done
 echo $RESULT
 exit
 }
 
 function GLOBAL_QUERY {
-HTML=`curl  -sS $NAGIOS_INSTANCE/extinfo.cgi --data 'type=0' -u $USERNAME:$PASSWORD | grep "$SEARCH"`
-if [ $? -eq 1 ]; then echo "curl failed"; exit; fi
+HTML=`curl  -sS $NAGIOS_INSTANCE/extinfo.cgi \
+    --data type=0 \
+    -u $USERNAME:$PASSWORD | grep "$SEARCH"`
+if [ $? -eq 1 ]; then echo "curl failed"; exit 1; fi
 MATCH=`echo $HTML | grep -i 'yes'`
-if [ -n "$MATCH" ]; then
-    echo "$QUERY:enabled"; exit
-else
-    echo  "$QUERY:disabled"; exit; fi
+if [ -n "$MATCH" ]; then echo "$QUERY:enabled"; exit
+else echo  "$QUERY:disabled"; exit; fi
 }
 
 function ACKNOWLEDGE {
 curl -sS  $DATA \
-    $NAGIOS_INSTANCE/cmd.cgi --data host=$HOST --data "com_data=$COMMENT" --data cmd_mod=2 \
-    --data btnSubmit=Commit -u $USERNAME:$PASSWORD | grep -o 'Your command request was successfully submitted to Nagios for processing.'
-if [ $? -eq 1 ]; then echo "curl failed. Command not sent."; exit; fi
+    $NAGIOS_INSTANCE/cmd.cgi \
+    --data host=$HOST \
+    --data "com_data=$COMMENT" \
+    --data cmd_mod=2 \
+    --data btnSubmit=Commit \
+    -u $USERNAME:$PASSWORD |\
+    grep -o 'Your command request was successfully submitted to Nagios for processing.'
+if [ $? -eq 1 ]; then echo "curl failed. Command not sent."; exit 1; fi
 exit
 }
 
@@ -404,8 +422,8 @@ exit
 }
 
 function LIST_GROUPS {
-echo List of all $TYPE\groups
-echo ---
+echo "List of all $TYPE\groups"
+echo "---"
 curl -Ss $DATA $NAGIOS_INSTANCE/status.cgi -u $USERNAME:$PASSWORD |\
     egrep "status(Even|Odd)" | grep "status.cgi?$TYPE\group=" | awk -F'</A>' '{print $1}' |\
     awk -F"${TYPE}group=" '{print $2}' | awk -F'&' '{print $1}' | column -c2 -t
