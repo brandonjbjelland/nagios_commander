@@ -1,11 +1,13 @@
 #!/bin/bash -
 # Title:    nagios_commander.sh
-# Author:   Brandon O'Connor <brandoconnor@gmail.com>
+# Author:   Brandon J. O'Connor <brandoconnor@gmail.com>
 # Created:  08.19.12
 # Purpose:  Provide a CLI interface to query and access common nagios functions remotely
 # TODO:     query host health, service health, force rechecks
 # TODO:     password input from a plain text file
 # TODO:     service group or host group health
+# TODO:     preserve username (if provided) in usage output
+# TODO:     feedback given when downtime del isn't found or when it successfully dels
 
 # Copyright 2012 Brandon J. O'Connor
 #
@@ -67,6 +69,8 @@ echo "
                  value:  (only required for global commands)
                         enable
                         disable
+        -d | --down_id
+            Downtime id number for deleting a specific downtime
         -Q | --quiet
             Flag for QUICK execution and QUIET output
         -h | --host
@@ -86,7 +90,7 @@ echo "
 
 Usage: $PROGNAME -n <nagios_instance> -c <commands> <method> -h <host> -H <host_group> -s <service> -S <service_group> -t <time_in_mins> -c <downtime_comment>
 Examples:
-$DIR/$PROGNAME -n $NAG_HOST -c set downtime -h cfengine01.sea -s PROC_CFAGENT_QUIET -t 1 -C 'downtime comment' -Q
+$DIR/$PROGNAME -n $NAG_HOST -c set downtime -h cfengine01.sea -s PROC_CFAGENT_QUIET -t 1 -C 'downtime comment' -Q -u <USERNAME> -p <PASSWORD>
 $DIR/$PROGNAME -n $NAG_HOST -q list -h -u <USERNAME> -p <PASSWORD>
 $DIR/$PROGNAME -n $NAG_HOST -q host_downtime -u <USERNAME> -p <PASSWORD>
 "
@@ -336,7 +340,7 @@ elif [[ $SCOPE = services ]]; then
     DOWN_ID=$(curl -Ss $NAGIOS_INSTANCE/extinfo.cgi -u $USERNAME:$PASSWORD \
     --data type=6 | grep "extinfo.cgi" | grep "service=" |\
     awk -F"<td CLASS='downtime" '{print $2" "$3" "$5" "$7" "$8" "$6" "$11}' |\
-    awk -F'>' '{print $3"|||"$7"|||"$18"}' | sed -e's/<\/td//g' -e's/<\/A//g' |\
+    awk -F'>' '{print $3"|||"$7"|||"$18}' | sed -e's/<\/td//g' -e's/<\/A//g' |\
     column -c8 -t -s"|||" | egrep "$HOST" | grep "$SERVICE" | egrep -o "[0-9]+" |\
     sort -rn | head -n1)
 if [ ! $DOWN_ID ]; then DOWN_ID=1; fi
