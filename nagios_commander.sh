@@ -39,6 +39,8 @@ DIR="$(cd "$( dirname "$0")" && pwd)"
 echo "
         -n | --nag-host
             nagios HOSTNAME followed by its nagios directory
+		-N | --nag-http-schema
+			nagios URI schema
         -u | --username
             USER to execute commands
         -p | --password
@@ -292,12 +294,12 @@ fi
 }
 
 function SET_DOWNTIME {
-NOW_ADD_MINS=$(date +"%m-%d-%Y %H:%M:%S" -d "+$MINUTES minute")
+NOW_ADD_MINS=$(date +"%Y-%m-%dT%H:%M:%S" -d "+$MINUTES minute")
 if [ ! $MINUTES ]; then
     echo "Time value not set. Cannot submit downtime requests without a duration."
     exit
 fi
-NOW=$(date +"%m-%d-%Y %H:%M:%S")
+NOW=$(date +"%Y-%m-%dT%H:%M:%S")
 curl -sS $DATA $NAGIOS_INSTANCE/cmd.cgi -u "$USERNAME:$PASSWORD" \
     --data cmd_typ=$CMD_TYP \
     --data cmd_mod=2 \
