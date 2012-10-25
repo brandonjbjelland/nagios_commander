@@ -28,6 +28,7 @@
 #NAG_HOST='nagios.sea.bigfishgames.com/nagios'
 #USERNAME=''
 #PASSWORD=''
+NAG_HTTP_SCHEMA=http
 
 unalias -a
 
@@ -100,6 +101,7 @@ exit 1
 while [ "$1" != "" ]; do
     case $1 in
             -n | --nag ) shift; NAG_HOST=$1;;
+			-N | --nag_http_schema ) shift; NAG_HTTP_SCHEMA=$1;;
             -h | --host ) if [[ $2 = [A-Za-z]* ]]; then shift; HOST=$1 ; else HOST=list; fi ;;
             -H | --host_group ) if [[ $2 = [A-Za-z]* ]]; then shift; HOSTGROUP=$1; else HOSTGROUP=list; fi;;
             -s | --service ) if [[ $2 = [A-Za-z]* ]]; then shift; SERVICE=$1; else SERVICE=list; fi;;
@@ -135,7 +137,7 @@ else
 fi
 
 # verify creds are good on the fastest page possible
-NAGIOS_INSTANCE="http://$NAG_HOST/cgi-bin"
+NAGIOS_INSTANCE="$NAG_HTTP_SCHEMA://$NAG_HOST/cgi-bin"
 if [ -n "`curl -Ss $NAGIOS_INSTANCE/ -u $USERNAME:$PASSWORD | grep 'Authorization'`" ]; then
     echo "Bad credentials. Exiting"; exit 1
 fi
@@ -267,6 +269,7 @@ elif [ $ACTION ]; then
             fi
             DELETE_DOWNTIME; exit 0
         elif [ $HOST ]; then
+			CMD_TYP=78
             COUNT=1; SCOPE=hosts
             while [ ! $DOWN_ID ] && [ $COUNT -lt 5 ] ; do
                 FIND_DOWN_ID; COUNT=$[$COUNT+1]
@@ -331,7 +334,7 @@ if [[ $SCOPE = hosts ]]; then
     DOWN_ID=$(curl -Ss $NAGIOS_INSTANCE/extinfo.cgi -u $USERNAME:$PASSWORD \
     --data type=6 | grep "extinfo.cgi" | sed -e'/service=/d' |\
     awk -F"<td CLASS='downtime" '{print $2" "$4" "$7" "$10" "$5}' |\
-    awk -F'>' '{print $3"|||"$10"}' | sed -e's/<\/td//g' -e's/<\/A//g' |\
+    awk -F'>' '{print $3"|||"$10}' | sed -e's/<\/td//g' -e's/<\/A//g' |\
     egrep "$HOST" | egrep -o "[0-9]+" | sort -rn | head -n1)
     if [ ! $DOWN_ID ]; then DOWN_ID=1; fi
 elif [[ $SCOPE = services ]]; then
