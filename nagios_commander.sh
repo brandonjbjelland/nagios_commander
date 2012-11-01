@@ -25,7 +25,7 @@
 ##################
 
 # globals can be defined here if desired
-#NAG_HOST='nagios.sea.bigfishgames.com/nagios'
+#NAG_HOST=''
 #USERNAME=''
 #PASSWORD=''
 NAG_HTTP_SCHEMA=http
@@ -61,6 +61,7 @@ echo "
                 action: set
                         del
                         ack
+                        recheck
                 scope: (required for all but ack)
                         downtime
                         notifications
@@ -153,6 +154,7 @@ if  [ $QUERY ]; then
         elif [ $HOST ]; then
             DATA="--data host=$HOST --data style=detail"
             LIST_SERVICES
+            exit 0
         elif [[ $HOSTGROUP = list ]]; then
             DATA="--data hostgroup=all --data style=summary"
             TYPE='host'
@@ -166,7 +168,10 @@ if  [ $QUERY ]; then
             LIST_GROUPS
         elif [ $SERVICEGROUP ]; then
             DATA="--data servicegroup=$SERVICEGROUP --data style=detail"
-            LIST_SERVICES
+            #LIST_SERVICES
+            #This function will have to be separated out
+            echo "Feature pending"
+            exit
         fi
     else
         if [[ $QUERY = event_handlers ]]; then
@@ -254,8 +259,12 @@ elif [ $ACTION ]; then
             SET_DOWNTIME
         elif [[ $ACTION = ack ]] && [ $HOST ] && [ $SERVICE ] ; then
             DATA="--data cmd_typ=34 --data service=$SERVICE"; ACKNOWLEDGE
-        elif [[ $ACTION = ack ]] && [ $HOST ]; then
+        elif [[ $ACTION = ack ]] && [ $HOST ] ; then
             DATA="--data cmd_typ=33"; ACKNOWLEDGE
+        elif [[ $ACTION = recheck ]] && [ $HOST ] && [ $SERVICE ] ; then
+            DATA="--data cmd_typ=7 --data service=$SERVICE"; RECHECK
+         elif [[ $ACTION = recheck ]] && [ $HOST ] ; then
+            DATA="--data cmd_typ=6"; RECHECK
         fi
     elif [[ $ACTION = del ]]; then
         if [ $DOWN_ID ]; then
@@ -396,7 +405,7 @@ if [ $? -eq 1 ]; then echo "curl failed. Command not sent."; exit 1; fi
 QUERY=$SCOPE; RESULT=`MAIN`
 until [[ $SCOPE:$VALUE = $RESULT ]]; do sleep 1; RESULT=`MAIN`; done
 echo $RESULT
-exit
+exit 0
 }
 
 function GLOBAL_QUERY {
@@ -406,10 +415,40 @@ HTML=`curl  -sS $NAGIOS_INSTANCE/extinfo.cgi \
 if [ $? -eq 1 ]; then echo "curl failed"; exit 1; fi
 MATCH=`echo $HTML | grep -i 'yes'`
 if [ -n "$MATCH" ]; then echo "$QUERY:enabled"; exit
-else echo  "$QUERY:disabled"; exit; fi
+else echo  "$QUERY:disabled"; exit 0; fi
 }
 
 function ACKNOWLEDGE {
+curl -sS  $DATA \
+    $NAGIOS_INSTANCE/cmd.cgi \
+    --data host=$HOST \
+    --data "com_data=$COMMENT" \
+    --data cmd_mod=2 \
+    --data btnSubmit=Commit \
+    -u $USERNAME:$PASSWORD |\
+    grep -o 'Your command request was successfully submitted to Nagios for processing.'
+if [ $? -eq 1 ]; then echo "curl failed. Command not sent."; exit 1; fi
+exi
+t
+}
+
+function RECHECK {
+curl -sS  $DATA \
+    $NAGIOS_INSTANCE/cmd.cgi \
+    --data host=$HOST \
+    --data "time=$NOW" \    # best effort guess
+    --data cmd_typ=7 \
+    --data cmd_mod=2 \  # is this necessary?
+    --data btnSubmit=Commit \
+    --data "force_recheck"
+    -u $USERNAME:$PASSWORD |\
+    grep -o 'Your command request was successfully submitted to Nagios for processing.'
+if [ $? -eq 1 ]; then echo "curl failed. Command not sent."; exit 1; fi
+exit 0
+}
+
+function SET_STATUS {
+# not implemented yet
 curl -sS  $DATA \
     $NAGIOS_INSTANCE/cmd.cgi \
     --data host=$HOST \
@@ -440,13 +479,18 @@ exit
 }
 
 function LIST_SERVICES {
-echo List of all services on $HOST$SERVICEGROUP
+echo Fetching services and health on $HOST
 echo ---
-curl -Ss $DATA $NAGIOS_INSTANCE/status.cgi -u $USERNAME:$PASSWORD |\
-    grep 'extinfo.cgi?type=2&host=localhost&service=' | grep ALIGN=LEFT |\
-    awk -F'status' '{print $2}' | awk -F"host=localhost&service=" '{print $2}' |\
-    awk -F"'>" '{print $1}'
-exit
+HOSTS=($(curl -Ss $DATA $NAGIOS_INSTANCE/status.cgi -u $USERNAME:$PASSWORD |\
+    grep "extinfo.cgi?type=2&host=" | cut -d"=" -f8 | cut -d"'" -f1))
+STATUSES=($(curl -Ss $DATA $NAGIOS_INSTANCE/status.cgi -u $USERNAME:$PASSWORD |\
+    egrep "status(OK|CRITICAL|WARNING|UNKNOWN)" | cut -d"'" -f2 | cut -c 7-))
+for i in $(seq 0 $(( ${#HOSTS[@]} - 1 )) ); do
+    COMBINED=(${COMBINED[@]} ${HOSTS[$i]}@${STATUSES[$i]})
+done
+echo ${COMBINED[@]} | tr ' ' '\n' |  sed '1 i \---' |  sed '1 i \Service@State' |\
+    tr '@' ' ' | column -c2 -t
+
 }
 
 MAIN
