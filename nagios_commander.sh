@@ -271,6 +271,7 @@ elif [ $ACTION ]; then
             CMD_TYP=79 ; DELETE_DOWNTIME; CMD_TYP=78 ; DELETE_DOWNTIME
             exit 0
         elif [ $SERVICE ] && [ $HOST ]; then
+			CMD_TYP=79
             COUNT=1; SCOPE=services
             while [ ! $DOWN_ID ] && [ $COUNT -lt 5 ] ; do
                 FIND_DOWN_ID; COUNT=$[$COUNT+1]
