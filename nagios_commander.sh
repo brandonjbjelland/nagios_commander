@@ -29,6 +29,8 @@
 #USERNAME=''
 #PASSWORD=''
 NAG_HTTP_SCHEMA=http
+# seconds to poll nagios till downtime is set
+NAG_POLL_TIMEOUT=45
 
 unalias -a
 
@@ -327,7 +329,7 @@ if [ -z $QUIET ]; then
     if [ $HOST ] || [ $SERVICE ]; then
         COUNT=2; FIND_DOWN_ID; OLD_DID=$DOWN_ID;
         if [ $OLD_DID ]; then sleep 1; else OLD_DID=1 && DOWN_ID=1; fi
-        while [ $DOWN_ID -eq $OLD_DID  ] && [ $COUNT -le 15 ] ; do
+        while [ $DOWN_ID -eq $OLD_DID  ] && [ $COUNT -le $NAG_POLL_TIMEOUT ] ; do
             sleep 1; FIND_DOWN_ID; COUNT=$[$COUNT+1]
         done
         if [ $DOWN_ID -eq 1 ]; then
