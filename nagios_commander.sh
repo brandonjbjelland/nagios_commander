@@ -468,7 +468,7 @@ function LIST_HOSTS {
 echo -e "Hostname\tStatus"
 curl -Ss $DATA $NAGIOS_INSTANCE/status.cgi -u $USERNAME:$PASSWORD |\
     grep 'extinfo.cgi?type=1&host=' | grep "statusHOST" | awk -F'</A>' '{print $1}' |\
-    awk -F'statusHOST' '{print $2}'  |  awk -F"'>" '{print $3"\t"$1}' | column -c2 -t
+    awk -F'statusHOST' '{print $2}'  |  awk -F"'>" '{print $3"\t"$1}' | sed 's/<\/a>&nbsp;<\/td>//g' | column -c2 -t
 exit
 }
 
