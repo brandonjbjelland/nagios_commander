@@ -3,10 +3,8 @@
 # Author:   Brandon J. O'Connor <brandoconnor@gmail.com>
 # Created:  08.19.12
 # Purpose:  Provide a CLI interface to query and access common nagios functions remotely
-# TODO:     query host health, service health, force rechecks
 # TODO:     password input from a plain text file
 # TODO:     service group or host group health
-# TODO:     preserve username (if provided) in usage output
 # TODO:     feedback given when downtime del isn't found or when it successfully dels
 
 # Copyright 2012 Brandon J. O'Connor
@@ -24,15 +22,16 @@
 #   limitations under the License.
 ##################
 
+
+unalias -a
 # globals can be defined here if desired
 #NAG_HOST=''
 #USERNAME=''
 #PASSWORD=''
-NAG_HTTP_SCHEMA=http
+NAG_HTTP_SCHEMA='http'
 # seconds to poll nagios till downtime is set
 NAG_POLL_TIMEOUT=45
-
-unalias -a
+USERNAME='<USERNAME>'
 
 function usage {
 if [ -z $NAG_HOST ]; then $NAG_HOST='nagios.env/nagios'; fi
@@ -41,8 +40,8 @@ DIR="$(cd "$( dirname "$0")" && pwd)"
 echo "
         -n | --nag-host
             nagios HOSTNAME followed by its nagios directory
-		-N | --nag-http-schema
-			nagios URI schema
+        -N | --nag-http-schema
+            nagios URI schema (http|https)
         -u | --username
             USER to execute commands
         -p | --password
@@ -96,9 +95,9 @@ echo "
 
 Usage: $PROGNAME -n <nagios_instance> -c <commands> <method> -h <host> -H <host_group> -s <service> -S <service_group> -t <time_in_mins> -c <downtime_comment>
 Examples:
-$DIR/$PROGNAME -n $NAG_HOST -c set downtime -h cfengine01.sea -s PROC_CFAGENT_QUIET -t 1 -C 'downtime comment' -Q -u <USERNAME> -p <PASSWORD>
-$DIR/$PROGNAME -n $NAG_HOST -q list -h -u <USERNAME> -p <PASSWORD>
-$DIR/$PROGNAME -n $NAG_HOST -q host_downtime -u <USERNAME> -p <PASSWORD>
+$DIR/$PROGNAME -n $NAG_HOST -c set downtime -h cfengine01.sea -s PROC_CFAGENT_QUIET -t 1 -C 'downtime comment' -Q -u $USERNAME -p <PASSWORD>
+$DIR/$PROGNAME -n $NAG_HOST -q list -h -u $USERNAME -p <PASSWORD>
+$DIR/$PROGNAME -n $NAG_HOST -q host_downtime -u $USERNAME -p <PASSWORD>
 "
 exit 1
 }
@@ -106,7 +105,7 @@ exit 1
 while [ "$1" != "" ]; do
     case $1 in
             -n | --nag ) shift; NAG_HOST=$1;;
-			-N | --nag_http_schema ) shift; NAG_HTTP_SCHEMA=$1;;
+            -N | --nag_http_schema ) shift; NAG_HTTP_SCHEMA=$1;;
             -h | --host ) if [[ $2 = [A-Za-z]* ]]; then shift; HOST=$1 ; else HOST=list; fi ;;
             -H | --host_group ) if [[ $2 = [A-Za-z]* ]]; then shift; HOSTGROUP=$1; else HOSTGROUP=list; fi;;
             -s | --service ) if [[ $2 = [A-Za-z]* ]]; then shift; SERVICE=$1; else SERVICE=list; fi;;
@@ -273,7 +272,7 @@ elif [ $ACTION ]; then
             CMD_TYP=79 ; DELETE_DOWNTIME; CMD_TYP=78 ; DELETE_DOWNTIME
             exit 0
         elif [ $SERVICE ] && [ $HOST ]; then
-			CMD_TYP=79
+            CMD_TYP=79
             COUNT=1; SCOPE=services
             while [ ! $DOWN_ID ] && [ $COUNT -lt 5 ] ; do
                 FIND_DOWN_ID; COUNT=$[$COUNT+1]
@@ -283,7 +282,7 @@ elif [ $ACTION ]; then
             fi
             DELETE_DOWNTIME; exit 0
         elif [ $HOST ]; then
-			CMD_TYP=78
+            CMD_TYP=78
             COUNT=1; SCOPE=hosts
             while [ ! $DOWN_ID ] && [ $COUNT -lt 5 ] ; do
                 FIND_DOWN_ID; COUNT=$[$COUNT+1]
@@ -343,8 +342,6 @@ exit
 
 function FIND_DOWN_ID {
 if [[ $SCOPE = hosts ]]; then
-    # XXX what is this?
-    # if [ ! $COUNT ]; then  echo -e "hostname\tdowntime-id"; fi
     DOWN_ID=$(curl -Ss $NAGIOS_INSTANCE/extinfo.cgi -u $USERNAME:$PASSWORD \
     --data type=6 | grep "extinfo.cgi" | sed -e'/service=/d' |\
     awk -F"<td CLASS='downtime" '{print $2" "$4" "$7" "$10" "$5}' |\
@@ -352,8 +349,6 @@ if [[ $SCOPE = hosts ]]; then
     egrep "$HOST" | egrep -o "[0-9]+" | sort -rn | head -n1)
     if [ ! $DOWN_ID ]; then DOWN_ID=1; fi
 elif [[ $SCOPE = services ]]; then
-    # XXX what is this?
-    #if [ ! $COUNT ]; then echo -e "hostname\t\tservice\t\tdowntime-id"; fi
     DOWN_ID=$(curl -Ss $NAGIOS_INSTANCE/extinfo.cgi -u $USERNAME:$PASSWORD \
     --data type=6 | grep "extinfo.cgi" | grep "service=" |\
     awk -F"<td CLASS='downtime" '{print $2" "$3" "$5" "$7" "$8" "$6" "$11}' |\
@@ -436,6 +431,7 @@ t
 }
 
 function RECHECK {
+NOW=$(date +"%Y-%m-%dT%H:%M:%S")
 curl -sS  $DATA \
     $NAGIOS_INSTANCE/cmd.cgi \
     --data host=$HOST \
