@@ -29,6 +29,8 @@
 #USERNAME=''
 #PASSWORD=''
 NAG_HTTP_SCHEMA=http
+# seconds to poll nagios till downtime is set
+NAG_POLL_TIMEOUT=45
 
 unalias -a
 
@@ -271,6 +273,7 @@ elif [ $ACTION ]; then
             CMD_TYP=79 ; DELETE_DOWNTIME; CMD_TYP=78 ; DELETE_DOWNTIME
             exit 0
         elif [ $SERVICE ] && [ $HOST ]; then
+			CMD_TYP=79
             COUNT=1; SCOPE=services
             while [ ! $DOWN_ID ] && [ $COUNT -lt 5 ] ; do
                 FIND_DOWN_ID; COUNT=$[$COUNT+1]
@@ -326,7 +329,7 @@ if [ -z $QUIET ]; then
     if [ $HOST ] || [ $SERVICE ]; then
         COUNT=2; FIND_DOWN_ID; OLD_DID=$DOWN_ID;
         if [ $OLD_DID ]; then sleep 1; else OLD_DID=1 && DOWN_ID=1; fi
-        while [ $DOWN_ID -eq $OLD_DID  ] && [ $COUNT -le 15 ] ; do
+        while [ $DOWN_ID -eq $OLD_DID  ] && [ $COUNT -le $NAG_POLL_TIMEOUT ] ; do
             sleep 1; FIND_DOWN_ID; COUNT=$[$COUNT+1]
         done
         if [ $DOWN_ID -eq 1 ]; then
@@ -465,7 +468,7 @@ function LIST_HOSTS {
 echo -e "Hostname\tStatus"
 curl -Ss $DATA $NAGIOS_INSTANCE/status.cgi -u $USERNAME:$PASSWORD |\
     grep 'extinfo.cgi?type=1&host=' | grep "statusHOST" | awk -F'</A>' '{print $1}' |\
-    awk -F'statusHOST' '{print $2}'  |  awk -F"'>" '{print $3"\t"$1}' | column -c2 -t
+    awk -F'statusHOST' '{print $2}'  |  awk -F"'>" '{print $3"\t"$1}' | sed 's/<\/a>&nbsp;<\/td>//g' | column -c2 -t
 exit
 }
 
