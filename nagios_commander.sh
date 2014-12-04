@@ -32,6 +32,7 @@ NAG_HTTP_SCHEMA='http'
 # seconds to poll nagios till downtime is set
 NAG_POLL_TIMEOUT=45
 USERNAME='<USERNAME>'
+DATE_FORMAT="us"
 
 function usage {
 if [ -z $NAG_HOST ]; then $NAG_HOST='nagios.env/nagios'; fi
@@ -90,6 +91,9 @@ echo "
              TIME in minutes to place on a downtime window, beginning now
         -C
             COMMENT (required by set downtime, ack)
+        -df | --date-format
+            Date format as per http://nagios.sourceforge.net/docs/3_0/configmain.html#date_format
+            One of {us,euro,iso8601,strict-iso8601} (default 'us')
         -*
             print this help dialog
 
@@ -119,6 +123,7 @@ while [ "$1" != "" ]; do
             -d | --down_id ) shift; DOWN_ID=$1;;
             -Q | --quiet ) QUIET=1;;
             -D | --debug ) DEBUG=1;;
+            -df | --date-format ) shift; DATE_FORMAT=$1;;
             *  | --help ) usage;;
         esac
         shift
@@ -145,6 +150,14 @@ NAGIOS_INSTANCE="$NAG_HTTP_SCHEMA://$NAG_HOST/cgi-bin"
 if [ -n "`curl -Ss $NAGIOS_INSTANCE/ -u $USERNAME:$PASSWORD | grep 'Authorization'`" ]; then
     echo "Bad credentials. Exiting"; exit 1
 fi
+
+case $DATE_FORMAT in
+    "us" ) DATE_FORMAT_STRING="%m-%d-%Y %H:%M:%S";;
+    "euro" ) DATE_FORMAT_STRING="%d-%m-%Y %H:%M:%S";;
+    "iso8601" ) DATE_FORMAT_STRING="%Y-%m-%d %H:%M:%S";;
+    "strict-iso8601" ) DATE_FORMAT_STRING="%Y-%m-%dT%H:%M:%S";;
+    * ) usage;;
+esac
 
 function MAIN {
 if  [ $QUERY ]; then
@@ -305,12 +318,12 @@ fi
 }
 
 function SET_DOWNTIME {
-NOW_ADD_MINS=$(date +"%Y-%m-%dT%H:%M:%S" -d "+$MINUTES minute")
+NOW_ADD_MINS=$(date +"$DATE_FORMAT_STRING" -d "+$MINUTES minute")
 if [ ! $MINUTES ]; then
     echo "Time value not set. Cannot submit downtime requests without a duration."
     exit
 fi
-NOW=$(date +"%Y-%m-%dT%H:%M:%S")
+NOW=$(date +"$DATE_FORMAT_STRING")
 curl -sS $DATA $NAGIOS_INSTANCE/cmd.cgi -u "$USERNAME:$PASSWORD" \
     --data cmd_typ=$CMD_TYP \
     --data cmd_mod=2 \
@@ -431,7 +444,7 @@ t
 }
 
 function RECHECK {
-NOW=$(date +"%Y-%m-%dT%H:%M:%S")
+NOW=$(date +"$DATE_FORMAT_STRING")
 curl -sS  $DATA \
     $NAGIOS_INSTANCE/cmd.cgi \
     --data host=$HOST \
