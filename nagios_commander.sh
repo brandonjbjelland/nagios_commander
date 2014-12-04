@@ -328,6 +328,7 @@ curl -sS $DATA $NAGIOS_INSTANCE/cmd.cgi -u "$USERNAME:$PASSWORD" \
     --data cmd_typ=$CMD_TYP \
     --data cmd_mod=2 \
     --data "com_data=$COMMENT" \
+    --data "com_author=$USERNAME" \
     --data "start_time=$NOW" \
     --data "end_time=$NOW_ADD_MINS" \
     --data fixed=1 \
