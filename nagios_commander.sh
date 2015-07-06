@@ -2,9 +2,9 @@
 # Title:    nagios_commander.sh
 # Author:   Brandon J. O'Connor <brandoconnor@gmail.com>
 # Created:  08.19.12
-# Purpose:  Provide a CLI interface to query and access common nagios functions remotely
+# Purpose:  Provide a CLI to query and access common nagios functions remotely
 # TODO:     password input from a plain text file
-# TODO:     service group or host group health
+# TODO:     query service group or host group health
 # TODO:     feedback given when downtime del isn't found or when it successfully dels
 
 # Copyright 2012 Brandon J. O'Connor
