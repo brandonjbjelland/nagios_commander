@@ -98,6 +98,7 @@ Examples:
 $DIR/$PROGNAME -n $NAG_HOST -c set downtime -h cfengine01.sea -s PROC_CFAGENT_QUIET -t 1 -C 'downtime comment' -Q -u $USERNAME -p <PASSWORD>
 $DIR/$PROGNAME -n $NAG_HOST -q list -h -u $USERNAME -p <PASSWORD>
 $DIR/$PROGNAME -n $NAG_HOST -q host_downtime -u $USERNAME -p <PASSWORD>
+$DIR/$PROGNAME -n $NAG_HOST -c recheck -h host.example.net -s example-service -u $USERNAME -p <PASSWORD>
 "
 exit 1
 }
