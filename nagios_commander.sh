@@ -98,6 +98,7 @@ Examples:
 $DIR/$PROGNAME -n $NAG_HOST -c set downtime -h cfengine01.sea -s PROC_CFAGENT_QUIET -t 1 -C 'downtime comment' -Q -u $USERNAME -p <PASSWORD>
 $DIR/$PROGNAME -n $NAG_HOST -q list -h -u $USERNAME -p <PASSWORD>
 $DIR/$PROGNAME -n $NAG_HOST -q host_downtime -u $USERNAME -p <PASSWORD>
+$DIR/$PROGNAME -n $NAG_HOST -c recheck -h host.example.net -s example-service -u $USERNAME -p <PASSWORD>
 "
 exit 1
 }
@@ -242,7 +243,7 @@ elif [ $ACTION ]; then
                 SEARCH='Passive Host Checks'; GLOBAL_QUERY
             fi
         fi
-    elif [[ $ACTION = set ]] || [[ $ACTION = ack ]] ; then
+    elif [[ $ACTION = set ]] || [[ $ACTION = ack ]] || [[ $ACTION = recheck ]]; then
         if [[ $SCOPE = downtime ]]; then
             if [ $HOST ] && [ ! $SERVICE ]; then
                 CMD_TYP='55'; DATA="--data host=$HOST --data trigger=0"
@@ -435,11 +436,11 @@ NOW=$(date +"%Y-%m-%dT%H:%M:%S")
 curl -sS  $DATA \
     $NAGIOS_INSTANCE/cmd.cgi \
     --data host=$HOST \
-    --data "time=$NOW" \    # best effort guess
+    --data "time=$NOW" \
     --data cmd_typ=7 \
-    --data cmd_mod=2 \  # is this necessary?
+    --data cmd_mod=2 \
     --data btnSubmit=Commit \
-    --data "force_recheck"
+    --data "force_recheck" \
     -u $USERNAME:$PASSWORD |\
     grep -o 'Your command request was successfully submitted to Nagios for processing.'
 if [ $? -eq 1 ]; then echo "curl failed. Command not sent."; exit 1; fi
